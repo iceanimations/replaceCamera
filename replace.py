@@ -1,13 +1,12 @@
 import nuke
 import nukescripts
 import re
-import heapq
 
 class ReplaceCameraException(Exception):
     pass
 
 def getBackdrops(nodes=None):
-    '''I miss my babies'''
+    '''Get all the backdrops from selection or a list of nodes'''
     if nodes is None:
         nodes = nuke.selectedNodes()
     backdropNodes = set()
@@ -84,6 +83,8 @@ class BackdropShot(object):
     __repr__ = __str__
 
     def getCameraPath(self):
+        '''Construct the path for location where the maya camera exported from
+        animation maybe found'''
         mydict = { 'project': self.project,
             'episode': 'ep%02d'%self.getEpisodeNumber(),
             'sequence': 'sq%03d'%self.getSequenceNumber(),
@@ -91,6 +92,7 @@ class BackdropShot(object):
         return self.camera_template % mydict
 
     def getCameras(self):
+        '''Get Cameras found in the backdrop'''
         cameras = []
         if self.backdrop:
             for node in nuke.getBackdropNodes(self.backdrop):
@@ -99,12 +101,14 @@ class BackdropShot(object):
         return cameras
 
     def replaceCameras(self, path=None):
+        '''Replace Cameras found in the Backdrop'''
         if path is None:
             path = self.getCameraPath()
         for cam in self.getCameras():
             replaceCamera(cam, path)
 
     def getNumber(self, element='episode'):
+        '''Parsing episode, sequence and shots for numbers'''
         value = None
         exp = None
         try:
@@ -126,6 +130,7 @@ class BackdropShot(object):
 
     @classmethod
     def getFromPath(cls, path):
+        '''Parse for project, episode, sequence and shot given a path'''
         project = shot = sequence = episode = None
         shot_match = cls.shot_re.search(path)
         sequence_match = cls.sequence_re.search(path)
@@ -146,6 +151,8 @@ class BackdropShot(object):
 
     @classmethod
     def getPathScore(cls, path):
+        '''Get a path score, higher score means more likelihood for being the
+        representative path in a backdrop'''
         score = 0
         for attr in dir(cls):
             if attr.endswith('_re'):
@@ -156,6 +163,9 @@ class BackdropShot(object):
 
     @classmethod
     def getPathsFromBackdrop(cls, backdrop):
+        '''Get all paths from the read nodes within the backdrop ordered by
+        the likelihood of their relevance to shot being composited in the
+        backdrop'''
         paths = dict()
         for node in nuke.getBackdropNodes(backdrop):
             if node.Class() == 'Read':
@@ -166,6 +176,7 @@ class BackdropShot(object):
 
     @classmethod
     def getFromBackdrop(cls, backdrop):
+        '''Get BackdropShot object from the backdrop'''
         for node in nuke.getBackdropNodes(backdrop):
             file_paths = cls.getPathsFromBackdrop(backdrop)
             if file_paths:
@@ -176,6 +187,8 @@ class BackdropShot(object):
 
     @classmethod
     def getFromNodes(cls, nodes=None):
+        '''Given a list or a selection of nodes get relevent BackdropShot
+        objects per backdrop'''
         if nodes is None:
             nodes = nuke.selectedNodes()
         backdrops = list(getBackdrops(nodes))
@@ -187,6 +200,8 @@ class BackdropShot(object):
         return shots
 
 def replaceBackdropCameras(nodes = None):
+    '''Given a list or selection of nodes replace all the camera nodes using
+    paths detected from read nodes within containing backdrops'''
     results = []
     selectedNodes = nuke.selectedNodes()
     if nodes is None:
