@@ -157,8 +157,9 @@ class BackdropShot(object):
         for attr in dir(cls):
             if attr.endswith('_re'):
                 exp = getattr(cls, attr)
-                if exp.match(path):
+                if exp.search(path):
                     score += 10
+        print path, score
         return score
 
     @classmethod
@@ -203,7 +204,6 @@ def replaceBackdropCameras(nodes = None):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
-    selectedNodes = nuke.selectedNodes()
     if nodes is None:
         nodes = nuke.selectedNodes()
     backdropShots = BackdropShot.getFromNodes(nodes)
@@ -215,11 +215,8 @@ def replaceBackdropCameras(nodes = None):
             if replacement_cam:
                 results.append((bds.backdrop, path, replacement_cam))
     nukescripts.clear_selection_recursive()
-    for node in selectedNodes:
-        try:
-            node.setSelected(True)
-        except:
-            pass
+    for res in results:
+        res[2].setSelected(True)
     return results
 
 def main():
