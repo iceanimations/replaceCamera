@@ -157,9 +157,8 @@ class BackdropShot(object):
         for attr in dir(cls):
             if attr.endswith('_re'):
                 exp = getattr(cls, attr)
-                if exp.search(path):
+                for f in exp.findall(path):
                     score += 10
-        print path, score
         return score
 
     @classmethod
