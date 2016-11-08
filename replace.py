@@ -42,7 +42,6 @@ def getOutputs(node):
 
 def replaceCamera(camera, path):
     '''Replace camera with one found in the path'''
-    nukescripts.clear_selection_recursive()
     dependent = getOutputs(camera)
     x = camera.xpos()
     y = camera.ypos()
@@ -205,7 +204,7 @@ class BackdropShot(object):
                 shots.append(shot)
         return shots
 
-def replaceBackdropCameras(nodes = None):
+def replaceBackdropCameras(nodes = None, select=True):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
@@ -219,9 +218,10 @@ def replaceBackdropCameras(nodes = None):
             replacement_cam = replaceCamera(cam, path)
             if replacement_cam:
                 results.append((bds.backdrop, path, replacement_cam))
-    nukescripts.clear_selection_recursive()
-    for res in results:
-        res[2].setSelected(True)
+    if select:
+        nukescripts.clear_selection_recursive()
+        for res in results:
+            res[2].setSelected(True)
     return results
 
 def main():
