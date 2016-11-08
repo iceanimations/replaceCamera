@@ -22,6 +22,8 @@ def findCameraUpstream(node, delete_visited=True):
     while nodes:
         for node in nodes[:]:
             nodes.remove(node)
+            if node is None:
+                continue
             if node.Class() == 'Camera':
                 return node
             nodes.extend(node.dependencies())
