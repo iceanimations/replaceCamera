@@ -107,7 +107,11 @@ class BackdropShot(object):
         if path is None:
             path = self.getCameraPath()
         for cam in self.getCameras():
-            replaceCamera(cam, path)
+            try:
+                replaceCamera(cam, path)
+            except ReplaceCameraException:
+                import traceback
+                traceback.print_exc()
 
     def getNumber(self, element='episode'):
         '''Parsing episode, sequence and shots for numbers'''
