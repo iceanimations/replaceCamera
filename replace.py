@@ -208,6 +208,7 @@ def replaceBackdropCameras(nodes = None, select=True):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
+    selected = nuke.selectedNodes()
     if nodes is None:
         nodes = nuke.selectedNodes()
     backdropShots = BackdropShot.getFromNodes(nodes)
@@ -218,10 +219,17 @@ def replaceBackdropCameras(nodes = None, select=True):
             replacement_cam = replaceCamera(cam, path)
             if replacement_cam:
                 results.append((bds.backdrop, path, replacement_cam))
+    nukescripts.clear_selection_recursive()
     if select:
-        nukescripts.clear_selection_recursive()
         for res in results:
             res[2].setSelected(True)
+    else:
+        nuke
+        for node in selected:
+            try:
+                node.setSelected(True)
+            except:
+                pass
     return results
 
 def main():
