@@ -16,16 +16,42 @@ def getBackdrops(nodes=None):
             backdropNodes.add(new_bd)
     return backdropNodes
 
+def iterNodes(stuff):
+    if isinstance(stuff, nuke.Node):
+        yield stuff
+    elif hasattr(stuff, '__iter__'):
+        for thing in stuff:
+            for node in iterNodes(thing):
+                yield node
+
+def restore_selection(add_new = True):
+    def _decorator(func):
+        def _restorer(*args, **kwargs):
+            selection = nuke.selectedNodes()
+            new_stuff = func(*args, **kwargs)
+            nukescripts.clear_selection_recursive()
+            if add_new:
+                for new_node in iterNodes(new_stuff):
+                    try: new_node.setSelected(True)
+                    except AttributeError: pass
+            for node in selection:
+                try: node.setSelected(True)
+                except ValueError: pass
+            return new_stuff
+        return _restorer
+    return _decorator
+
 def findCameraUpstream(node, delete_visited=True):
     '''Backward breadth first search for camera node'''
     nodes = [node]
     while nodes:
         for node in nodes[:]:
             nodes.remove(node)
-            if node is None:
+            try:
+                if node.Class() == 'Camera':
+                    return node
+            except (ValueError, AttributeError):
                 continue
-            if node.Class() == 'Camera':
-                return node
             nodes.extend(node.dependencies())
             if delete_visited:
                 nuke.delete(node)
@@ -40,15 +66,21 @@ def getOutputs(node):
                 outputs.append((dep, inp))
     return outputs
 
+@restore_selection()
 def replaceCamera(camera, path):
     '''Replace camera with one found in the path'''
+    nukescripts.clear_selection_recursive()
     dependent = getOutputs(camera)
     x = camera.xpos()
     y = camera.ypos()
     new_node = nuke.nodePaste(path)
+    if new_node is None:
+        return None
+        # raise ReplaceCameraException, 'Camera node not found in %s' % path
     new_cam = findCameraUpstream(new_node)
     if new_cam is None:
-        raise ReplaceCameraException, 'Camera node not found in %s' % path
+        return None
+        # raise ReplaceCameraException, 'Camera node not found in %s' % path
     new_cam.setXYpos(x, y)
     for dep in new_cam.dependent():
         nuke.delete(dep)
@@ -204,32 +236,26 @@ class BackdropShot(object):
                 shots.append(shot)
         return shots
 
+@restore_selection()
 def replaceBackdropCameras(nodes = None, select=True):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
-    selected = nuke.selectedNodes()
     if nodes is None:
         nodes = nuke.selectedNodes()
     backdropShots = BackdropShot.getFromNodes(nodes)
     for bds in backdropShots:
         cameras = bds.getCameras()
-        for cam in cameras:
-            path = bds.getCameraPath()
-            replacement_cam = replaceCamera(cam, path)
-            if replacement_cam:
-                results.append((bds.backdrop, path, replacement_cam))
-    nukescripts.clear_selection_recursive()
-    if select:
-        for res in results:
-            res[2].setSelected(True)
-    else:
-        nuke
-        for node in selected:
-            try:
-                node.setSelected(True)
-            except:
-                pass
+        try:
+            for cam in cameras:
+                path = bds.getCameraPath()
+                replacement_cam = replaceCamera(cam, path)
+                if replacement_cam:
+                    results.append((bds.backdrop, path, replacement_cam))
+                    # do_select.append(cam in selected)
+        except ReplaceCameraException:
+            import traceback
+            traceback.print_exc()
     return results
 
 def main():
