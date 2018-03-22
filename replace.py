@@ -2,8 +2,10 @@ import nuke
 import nukescripts
 import re
 
+
 class ReplaceCameraException(Exception):
     pass
+
 
 def getBackdrops(nodes=None):
     '''Get all the backdrops from selection or a list of nodes'''
@@ -16,6 +18,7 @@ def getBackdrops(nodes=None):
             backdropNodes.add(new_bd)
     return backdropNodes
 
+
 def iterNodes(stuff):
     if isinstance(stuff, nuke.Node):
         yield stuff
@@ -24,7 +27,8 @@ def iterNodes(stuff):
             for node in iterNodes(thing):
                 yield node
 
-def restore_selection(add_new = True):
+
+def restore_selection(add_new=True):
     def _decorator(func):
         def _restorer(*args, **kwargs):
             selection = nuke.selectedNodes()
@@ -32,14 +36,21 @@ def restore_selection(add_new = True):
             nukescripts.clear_selection_recursive()
             if add_new:
                 for new_node in iterNodes(new_stuff):
-                    try: new_node.setSelected(True)
-                    except AttributeError: pass
+                    try:
+                        new_node.setSelected(True)
+                    except AttributeError:
+                        pass
             for node in selection:
-                try: node.setSelected(True)
-                except ValueError: pass
+                try:
+                    node.setSelected(True)
+                except ValueError:
+                    pass
             return new_stuff
+
         return _restorer
+
     return _decorator
+
 
 def findCameraUpstream(node, delete_visited=True):
     '''Backward breadth first search for camera node'''
@@ -56,15 +67,17 @@ def findCameraUpstream(node, delete_visited=True):
             if delete_visited:
                 nuke.delete(node)
 
+
 def getOutputs(node):
     '''Get output nodes with their connect input index'''
     dependents = node.dependent()
     outputs = []
     for dep in dependents:
-        for inp in range( dep.maxInputs() ):
+        for inp in range(dep.maxInputs()):
             if dep.input(inp) == node:
                 outputs.append((dep, inp))
     return outputs
+
 
 @restore_selection()
 def replaceCamera(camera, path):
@@ -89,6 +102,7 @@ def replaceCamera(camera, path):
         dep.setInput(i, new_cam)
     return new_cam
 
+
 class BackdropShot(object):
     shot_re = re.compile('SH(\d+)', re.IGNORECASE)
     sequence_re = re.compile('SQ(\d+)', re.IGNORECASE)
@@ -97,11 +111,17 @@ class BackdropShot(object):
     char_re = re.compile('char', re.IGNORECASE)
     beauty_re = re.compile('beauty', re.IGNORECASE)
     camera_template = (
-            "P:\\external\\%(project)s\\02_production\\%(episode)s"
-            "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
-            "\\animation\\camera\\%(episode)s_%(sequence)s_%(shot)s.nk"
-                    )
-    def __init__(self, episode=None, sequence=None, shot=None, project=None, backdrop=None):
+        "P:\\external\\%(project)s\\02_production\\%(episode)s"
+        "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
+        "\\animation\\camera\\%(episode)s_%(sequence)s_%(shot)s.nk")
+    project_maps = {'Suntop': 'Suntop_Season_01'}
+
+    def __init__(self,
+                 episode=None,
+                 sequence=None,
+                 shot=None,
+                 project=None,
+                 backdrop=None):
         self.episode = episode
         self.sequence = sequence
         self.shot = shot
@@ -109,19 +129,21 @@ class BackdropShot(object):
         self.backdrop = backdrop
 
     def __str__(self):
-        return ( 'BackdropShot(project=%s, episode=%s, sequence=%s, shot=%s,'
-                 ' backdrop=%r)' % ( self.project, self.episode, self.sequence,
-                    self.shot, self.backdrop) )
+        return ('BackdropShot(project=%s, episode=%s, sequence=%s, shot=%s,'
+                ' backdrop=%r)' % (self.project, self.episode, self.sequence,
+                                   self.shot, self.backdrop))
 
     __repr__ = __str__
 
     def getCameraPath(self):
         '''Construct the path for location where the maya camera exported from
         animation maybe found'''
-        mydict = { 'project': self.project,
-            'episode': 'ep%02d'%self.getEpisodeNumber(),
-            'sequence': 'sq%03d'%self.getSequenceNumber(),
-            'shot': 'sh%03d'%self.getShotNumber() }
+        mydict = {
+            'project': self.project_maps.get(self.project, self.project),
+            'episode': 'ep%02d' % self.getEpisodeNumber(),
+            'sequence': 'sq%03d' % self.getSequenceNumber(),
+            'shot': 'sh%03d' % self.getShotNumber()
+        }
         return self.camera_template % mydict
 
     def getCameras(self):
@@ -160,8 +182,10 @@ class BackdropShot(object):
 
     def getShotNumber(self):
         return self.getNumber('shot')
+
     def getEpisodeNumber(self):
         return self.getNumber('episode')
+
     def getSequenceNumber(self):
         return self.getNumber('sequence')
 
@@ -182,9 +206,8 @@ class BackdropShot(object):
         if project_match:
             project = project_match.group()
         if episode and sequence and shot and project:
-            return BackdropShot(episode=episode, sequence=sequence, shot=shot,
-                    project=project)
-
+            return BackdropShot(
+                episode=episode, sequence=sequence, shot=shot, project=project)
 
     @classmethod
     def getPathScore(cls, path):
@@ -236,8 +259,9 @@ class BackdropShot(object):
                 shots.append(shot)
         return shots
 
+
 @restore_selection()
-def replaceBackdropCameras(nodes = None, select=True):
+def replaceBackdropCameras(nodes=None, select=True):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
@@ -258,8 +282,10 @@ def replaceBackdropCameras(nodes = None, select=True):
             traceback.print_exc()
     return results
 
+
 def main():
     print replaceBackdropCameras()
+
 
 if __name__ == "__main__":
     main()
