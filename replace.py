@@ -1,6 +1,7 @@
 import nuke
 import nukescripts
 import re
+import os
 
 
 class ReplaceCameraException(Exception):
@@ -107,6 +108,7 @@ class BackdropShot(object):
     shot_re = re.compile('SH(\d+)', re.IGNORECASE)
     sequence_re = re.compile('SQ(\d+)', re.IGNORECASE)
     episode_re = re.compile('EP(\d+)', re.IGNORECASE)
+    episode_re2 = re.compile('02_production[\\\/]+([^\\\/]*)')
     project_re = re.compile('(?<=[\\/])[^\\/]*(?=[\\/]02_production)')
     char_re = re.compile('char', re.IGNORECASE)
     beauty_re = re.compile('beauty', re.IGNORECASE)
@@ -114,7 +116,17 @@ class BackdropShot(object):
         "P:\\external\\%(project)s\\02_production\\%(episode)s"
         "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
         "\\animation\\camera\\%(episode)s_%(sequence)s_%(shot)s.nk")
-    project_maps = {'Suntop': 'Suntop_Season_01'}
+    project_maps = {
+            'Suntop': {
+                'proj_folder': 'Suntop_Season_01'},
+            'Kids_Songs': {
+                'proj_folder': os.sep.join(['Barajoun', 'Kids_Songs']),
+                'cam_template': (
+                    'P:\\external\\%(project)s\\02_production\\%(episode)s'
+                    '\\%(sequence)s_%(shot)s\\animation'
+                    '\\camera\\%(sequence)s_%(shot)s_cam.nk'
+                    )
+                }}
 
     def __init__(self,
                  episode=None,
@@ -138,13 +150,23 @@ class BackdropShot(object):
     def getCameraPath(self):
         '''Construct the path for location where the maya camera exported from
         animation maybe found'''
+        template = self.project_maps.get(self.project, {}).get('cam_template',
+                self.camera_template)
+
+        episode = self.episode
+        ep_no = self.getEpisodeNumber()
+        if ep_no:
+            episode = 'ep%02d' % episode
+
         mydict = {
-            'project': self.project_maps.get(self.project, self.project),
-            'episode': 'ep%02d' % self.getEpisodeNumber(),
+            'project': self.project_maps.get(self.project,
+                    {}).get('proj_folder', self.project),
+            'episode': episode,
             'sequence': 'sq%03d' % self.getSequenceNumber(),
             'shot': 'sh%03d' % self.getShotNumber()
         }
-        return self.camera_template % mydict
+
+        return template % mydict
 
     def getCameras(self):
         '''Get Cameras found in the backdrop'''
@@ -195,10 +217,15 @@ class BackdropShot(object):
         project = shot = sequence = episode = None
         shot_match = cls.shot_re.search(path)
         sequence_match = cls.sequence_re.search(path)
+        episode = None
         episode_match = cls.episode_re.search(path)
-        project_match = cls.project_re.search(path)
-        if episode_match:
+        if not episode_match:
+            episode_match = cls.episode_re2.search(path)
+            if episode_match:
+                episode = episode_match.group(1)
+        else:
             episode = episode_match.group()
+        project_match = cls.project_re.search(path)
         if sequence_match:
             sequence = sequence_match.group()
         if shot_match:
