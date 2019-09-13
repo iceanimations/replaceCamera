@@ -33,20 +33,23 @@ def restore_selection(add_new=True):
     def _decorator(func):
         def _restorer(*args, **kwargs):
             selection = nuke.selectedNodes()
-            new_stuff = func(*args, **kwargs)
-            nukescripts.clear_selection_recursive()
-            if add_new:
-                for new_node in iterNodes(new_stuff):
+            new_stuff = []
+            try:
+                new_stuff = func(*args, **kwargs)
+            finally:
+                nukescripts.clear_selection_recursive()
+                if add_new:
+                    for new_node in iterNodes(new_stuff):
+                        try:
+                            new_node.setSelected(True)
+                        except AttributeError:
+                            pass
+                for node in selection:
                     try:
-                        new_node.setSelected(True)
-                    except AttributeError:
+                        node.setSelected(True)
+                    except ValueError:
                         pass
-            for node in selection:
-                try:
-                    node.setSelected(True)
-                except ValueError:
-                    pass
-            return new_stuff
+                return new_stuff
 
         return _restorer
 
@@ -126,7 +129,15 @@ class BackdropShot(object):
                     '\\%(sequence)s_%(shot)s\\animation'
                     '\\camera\\%(sequence)s_%(shot)s_cam.nk'
                     )
-                }}
+                },
+            'Feel_Better': {
+                'proj_folder': os.sep.join(['Barajoun', 'Feel_Better']),
+                'cam_template': (
+                    "P:\\external\\%(project)s\\02_production\\%(episode)s"
+                    "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
+                    "\\animation\\camera\\%(sequence)s_%(shot)s_cam.nk")
+                }
+            }
 
     def __init__(self,
                  episode=None,
@@ -150,17 +161,17 @@ class BackdropShot(object):
     def getCameraPath(self):
         '''Construct the path for location where the maya camera exported from
         animation maybe found'''
-        template = self.project_maps.get(self.project, {}).get('cam_template',
-                self.camera_template)
+        template = self.project_maps.get(self.project, {}).get(
+                'cam_template', self.camera_template)
 
         episode = self.episode
         ep_no = self.getEpisodeNumber()
         if ep_no:
-            episode = 'ep%02d' % episode
+            episode = 'ep%02d' % ep_no
 
         mydict = {
-            'project': self.project_maps.get(self.project,
-                    {}).get('proj_folder', self.project),
+            'project': self.project_maps.get(
+                    self.project, {}).get('proj_folder', self.project),
             'episode': episode,
             'sequence': 'sq%03d' % self.getSequenceNumber(),
             'shot': 'sh%03d' % self.getShotNumber()
@@ -288,7 +299,7 @@ class BackdropShot(object):
 
 
 @restore_selection()
-def replaceBackdropCameras(nodes=None, select=True):
+def replaceBackdropCameras(nodes=None):
     '''Given a list or selection of nodes replace all the camera nodes using
     paths detected from read nodes within containing backdrops'''
     results = []
