@@ -2,6 +2,32 @@ import nuke
 import nukescripts
 import re
 import os
+import itertools
+import glob
+
+
+from Qt import QtWidgets, QtCore
+
+
+def getPathChoice(paths):
+    dlg = QtWidgets.QDialog(QtWidgets.QApplication.activeWindow())
+    dlg.setWindowTitle('Replace Camera')
+    dlg.setMinimumWidth(600)
+    dlg.setMinimumHeight(100)
+    layout = QtWidgets.QHBoxLayout(dlg)
+    label = QtWidgets.QLabel('Select Cam Path:')
+    box = QtWidgets.QComboBox(dlg)
+    box.addItems(paths)
+    okbtn = QtWidgets.QPushButton('OK')
+    cancelbtn = QtWidgets.QPushButton('Cancel')
+    layout.addWidget(label)
+    layout.addWidget(box)
+    layout.addWidget(okbtn)
+    layout.addWidget(cancelbtn)
+    okbtn.clicked.connect(dlg.accept)
+    cancelbtn.clicked.connect(dlg.reject)
+    if dlg.exec_() == QtCore.Qt.Accepted:
+        return paths[box.currentIndex()]
 
 
 class ReplaceCameraException(Exception):
@@ -108,36 +134,43 @@ def replaceCamera(camera, path):
 
 
 class BackdropShot(object):
-    shot_re = re.compile('SH(\d+)', re.IGNORECASE)
-    sequence_re = re.compile('SQ(\d+)', re.IGNORECASE)
-    episode_re = re.compile('EP(\d+)', re.IGNORECASE)
-    episode_re2 = re.compile('02_production[\\\/]+([^\\\/]*)')
+    shot_re = re.compile(r'SH(\d+)([a-z]?)', re.IGNORECASE)
+    sequence_re = re.compile(r'SQ(\d+)([a-z]?)', re.IGNORECASE)
+    episode_re = re.compile(r'EP(\d+)([a-z]?)', re.IGNORECASE)
+    episode_re2 = re.compile(r'02_production[\\\/]+([^\\\/]*)')
     project_re = re.compile('(?<=[\\/])[^\\/]*(?=[\\/]02_production)')
     char_re = re.compile('char', re.IGNORECASE)
     beauty_re = re.compile('beauty', re.IGNORECASE)
-    camera_template = (
-        "P:\\external\\%(project)s\\02_production\\%(episode)s"
-        "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
-        "\\animation\\camera\\%(episode)s_%(sequence)s_%(shot)s.nk")
+    bases = ['L:',
+             os.path.join('P:', 'external'),
+             os.path.join('L:', 'Connect_Marketing'),
+             os.path.join('L:', 'EBM'),
+             os.path.join('L:', 'Hilal'),
+             os.path.join('L:', 'Manhattan'),
+             os.path.join('L:', 'RED'),
+             os.path.join('L:', 'Stimulus'),
+             os.path.join('L:', 'Unilever')]
+    camera_templates = [
+            os.path.join(
+                '%(base)s', '%(project)s', '02_production', '%(episode)s',
+                'SEQUENCES', '%(sequence)s', 'SHOTS', '%(shot)s', 'animation',
+                'camera', '%(cam)s'),
+            os.path.join(
+                '%(base)s', '%(project)s', '02_production', '%(episode)s',
+                '%(shot)s', 'animation', 'camera', '%(cam)s'),
+            os.path.join(
+                '%(base)s', '%(project)s', '02_production', '%(episode)s',
+                '%(sequence)s', '%(shot)s', 'animation', 'camera', '%(cam)s'),
+            os.path.join(
+                '%(base)s', '%(project)s', '%(episode)s', '%(sequence)s',
+                '%(shot)s', 'animation', 'camera', '%(cam)s')]
     project_maps = {
             'Suntop': {
                 'proj_folder': 'Suntop_Season_01'},
             'Kids_Songs': {
-                'proj_folder': os.sep.join(['Barajoun', 'Kids_Songs']),
-                'cam_template': (
-                    'P:\\external\\%(project)s\\02_production\\%(episode)s'
-                    '\\%(sequence)s_%(shot)s\\animation'
-                    '\\camera\\%(sequence)s_%(shot)s_cam.nk'
-                    )
-                },
+                'proj_folder': os.sep.join(['Barajoun', 'Kids_Songs'])},
             'Feel_Better': {
-                'proj_folder': os.sep.join(['Barajoun', 'Feel_Better']),
-                'cam_template': (
-                    "P:\\external\\%(project)s\\02_production\\%(episode)s"
-                    "\\SEQUENCES\\%(sequence)s\\SHOTS\\%(sequence)s_%(shot)s"
-                    "\\animation\\camera\\%(sequence)s_%(shot)s_cam.nk")
-                }
-            }
+                'proj_folder': os.sep.join(['Barajoun', 'Feel_Better'])}}
 
     def __init__(self,
                  episode=None,
@@ -161,23 +194,81 @@ class BackdropShot(object):
     def getCameraPath(self):
         '''Construct the path for location where the maya camera exported from
         animation maybe found'''
-        template = self.project_maps.get(self.project, {}).get(
-                'cam_template', self.camera_template)
+        templates = self.camera_templates
+        bases = self.bases
 
-        episode = self.episode
-        ep_no = self.getEpisodeNumber()
+        projects = [self.project]
+        mapped = self.project_maps.get(self.project, {}).get('proj_folder')
+        if mapped:
+            projects.append(mapped)
+
+        episodes = [self.episode]
+        ep_no, ep_let = self.getEpisodeNumber()
         if ep_no:
-            episode = 'ep%02d' % ep_no
+            episodes.extend([
+                'ep%02d%s' % (ep_no, ep_let),
+                'ep%03d%s' % (ep_no, ep_let)])
 
-        mydict = {
-            'project': self.project_maps.get(
-                    self.project, {}).get('proj_folder', self.project),
-            'episode': episode,
-            'sequence': 'sq%03d' % self.getSequenceNumber(),
-            'shot': 'sh%03d' % self.getShotNumber()
-        }
+        sequences = ['sq%03d%s' % self.getSequenceNumber()]
+        sequences.extend([
+            '%s_%s' % (ep, seq)
+            for ep, seq in itertools.product(episodes, sequences)])
 
-        return template % mydict
+        shots = ['sh%03d%s' % self.getShotNumber()]
+        shots.extend([
+            '%s_%s' % (sq, sh)
+            for sq, sh in itertools.product(sequences, shots)
+            ])
+
+        cams = [pat % sh
+                for pat, sh in itertools.product(
+                    ['%s_cam.nk', '%s.nk'], shots)]
+
+        for temp, base, proj, ep, sq, sh, cam in itertools.product(
+                templates, bases, projects, episodes, sequences, shots, cams):
+            path = temp % {
+                    'base': base, 'project': proj, 'episode': ep,
+                    'sequence': sq, 'shot': sh, 'cam': cam}
+            if os.path.isfile(path):
+                return path
+
+        return path
+
+    def getCameraPaths(self):
+        templates = self.camera_templates
+        bases = self.bases
+
+        projects = [self.project]
+        mapped = self.project_maps.get(self.project, {}).get('proj_folder')
+        if mapped:
+            projects.append(mapped)
+
+        episodes = [self.episode]
+        ep_no, ep_let = self.getEpisodeNumber()
+        if ep_no:
+            episodes = ['ep%02d%s' % (ep_no, ep_let),
+                        'ep%03d%s' % (ep_no, ep_let)]
+        sequences = ['*sq%03d%s' % self.getSequenceNumber()]
+        shots = ['*sh%03d%s' % self.getShotNumber()]
+        cams = ['*.nk']
+
+        for temp, base, proj, ep, sq, sh, cam in itertools.product(
+                templates, bases, projects, episodes, sequences, shots, cams):
+            path = temp % {'base': base, 'project': proj, 'episode': ep,
+                           'sequence': sq, 'shot': sh, 'cam': cam}
+            globs = glob.glob(path)
+            if globs:
+                return globs
+
+        paths = []
+        for temp, base, proj, sq, sh, cam in itertools.product(
+                templates, bases, projects, sequences, shots, cams):
+            path = temp % {'base': base, 'project': proj, 'episode': '*',
+                           'sequence': sq, 'shot': sh, 'cam': cam}
+            globs = glob.glob(path)
+            paths.extent(globs)
+
+        return globs
 
     def getCameras(self):
         '''Get Cameras found in the backdrop'''
@@ -191,7 +282,13 @@ class BackdropShot(object):
     def replaceCameras(self, path=None):
         '''Replace Cameras found in the Backdrop'''
         if path is None:
-            path = self.getCameraPath()
+            paths = self.getCameraPaths()
+            if not paths:
+                path = paths
+            elif len(paths) == 1:
+                path = paths[0]
+            else:
+                path = getPathChoice(paths)
         for cam in self.getCameras():
             try:
                 replaceCamera(cam, path)
@@ -211,7 +308,8 @@ class BackdropShot(object):
         if value is not None and exp is not None:
             match = exp.match(value)
             if match:
-                return int(match.group(1))
+                return int(match.group(1)), match.group(2)
+        return None, None
 
     def getShotNumber(self):
         return self.getNumber('shot')
@@ -310,7 +408,12 @@ def replaceBackdropCameras(nodes=None):
         cameras = bds.getCameras()
         try:
             for cam in cameras:
-                path = bds.getCameraPath()
+                paths = bds.getCameraPaths()
+                path = paths
+                if len(paths) == 1:
+                    path = paths[0]
+                elif paths:
+                    path = getPathChoice(paths)
                 replacement_cam = replaceCamera(cam, path)
                 if replacement_cam:
                     results.append((bds.backdrop, path, replacement_cam))
