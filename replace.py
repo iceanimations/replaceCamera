@@ -458,7 +458,12 @@ def replaceBackdropCameras(nodes=None):
 
 
 def main():
-    print replaceBackdropCameras()
+    cams = replaceBackdropCameras()
+    if cams:
+        print "%d cameras substituted!" % len(cams)
+    else:
+        print "No cameras subsituted"
+    return cams
 
 
 if __name__ == "__main__":
