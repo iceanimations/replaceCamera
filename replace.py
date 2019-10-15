@@ -5,29 +5,9 @@ import os
 import itertools
 import glob
 
-
 from Qt import QtWidgets, QtCore
 
-
-def getPathChoice(paths):
-    dlg = QtWidgets.QDialog(QtWidgets.QApplication.activeWindow())
-    dlg.setWindowTitle('Replace Camera')
-    dlg.setMinimumWidth(600)
-    dlg.setMinimumHeight(100)
-    layout = QtWidgets.QHBoxLayout(dlg)
-    label = QtWidgets.QLabel('Select Cam Path:')
-    box = QtWidgets.QComboBox(dlg)
-    box.addItems(paths)
-    okbtn = QtWidgets.QPushButton('OK')
-    cancelbtn = QtWidgets.QPushButton('Cancel')
-    layout.addWidget(label)
-    layout.addWidget(box)
-    layout.addWidget(okbtn)
-    layout.addWidget(cancelbtn)
-    okbtn.clicked.connect(dlg.accept)
-    cancelbtn.clicked.connect(dlg.reject)
-    if dlg.exec_() == QtCore.Qt.Accepted:
-        return paths[box.currentIndex()]
+from utilities import cui
 
 
 class ReplaceCameraException(Exception):
@@ -143,13 +123,8 @@ class BackdropShot(object):
     beauty_re = re.compile('beauty', re.IGNORECASE)
     bases = ['L:',
              os.path.join('P:', 'external'),
-             os.path.join('L:', 'Connect_Marketing'),
-             os.path.join('L:', 'EBM'),
-             os.path.join('L:', 'Hilal'),
-             os.path.join('L:', 'Manhattan'),
-             os.path.join('L:', 'RED'),
-             os.path.join('L:', 'Stimulus'),
-             os.path.join('L:', 'Unilever')]
+             os.path.join('P:', 'external', '*'),
+             os.path.join('L:', '*')]
     camera_templates = [
             os.path.join(
                 '%(base)s', '%(project)s', '02_production', '%(episode)s',
@@ -164,13 +139,7 @@ class BackdropShot(object):
             os.path.join(
                 '%(base)s', '%(project)s', '%(episode)s', '%(sequence)s',
                 '%(shot)s', 'animation', 'camera', '%(cam)s')]
-    project_maps = {
-            'Suntop': {
-                'proj_folder': 'Suntop_Season_01'},
-            'Kids_Songs': {
-                'proj_folder': os.sep.join(['Barajoun', 'Kids_Songs'])},
-            'Feel_Better': {
-                'proj_folder': os.sep.join(['Barajoun', 'Feel_Better'])}}
+    project_maps = {'Suntop': {'proj_folder': 'Suntop_Season_01'}}
 
     def __init__(self,
                  episode=None,
@@ -191,7 +160,7 @@ class BackdropShot(object):
 
     __repr__ = __str__
 
-    def getCameraPath(self):
+    def _getCameraPaths_exact_method(self):
         '''Construct the path for location where the maya camera exported from
         animation maybe found'''
         templates = self.camera_templates
@@ -224,17 +193,20 @@ class BackdropShot(object):
                 for pat, sh in itertools.product(
                     ['%s_cam.nk', '%s.nk'], shots)]
 
+        paths = []
         for temp, base, proj, ep, sq, sh, cam in itertools.product(
                 templates, bases, projects, episodes, sequences, shots, cams):
             path = temp % {
                     'base': base, 'project': proj, 'episode': ep,
                     'sequence': sq, 'shot': sh, 'cam': cam}
             if os.path.isfile(path):
-                return path
+                paths.append(path)
 
-        return path
+        return paths
 
-    def getCameraPaths(self):
+    def _getCameraPaths_blob_method(self,
+                                    multi_episode=False,
+                                    multi_sequence=False):
         templates = self.camera_templates
         bases = self.bases
 
@@ -243,32 +215,33 @@ class BackdropShot(object):
         if mapped:
             projects.append(mapped)
 
-        episodes = [self.episode]
-        ep_no, ep_let = self.getEpisodeNumber()
-        if ep_no:
-            episodes = ['ep%02d%s' % (ep_no, ep_let),
-                        'ep%03d%s' % (ep_no, ep_let)]
-        sequences = ['*sq%03d%s' % self.getSequenceNumber()]
+        if multi_episode:
+            episodes = ['*']
+        else:
+            episodes = [self.episode]
+            ep_no, ep_let = self.getEpisodeNumber()
+            if ep_no:
+                episodes = ['ep%02d%s' % (ep_no, ep_let),
+                            'ep%03d%s' % (ep_no, ep_let)]
+
+        if multi_sequence:
+            sequences = ['*']
+        else:
+            sequences = ['*sq%03d%s' % self.getSequenceNumber()]
         shots = ['*sh%03d%s' % self.getShotNumber()]
         cams = ['*.nk']
 
+        paths = []
         for temp, base, proj, ep, sq, sh, cam in itertools.product(
                 templates, bases, projects, episodes, sequences, shots, cams):
             path = temp % {'base': base, 'project': proj, 'episode': ep,
                            'sequence': sq, 'shot': sh, 'cam': cam}
             globs = glob.glob(path)
-            if globs:
-                return globs
+            paths.extend(globs)
 
-        paths = []
-        for temp, base, proj, sq, sh, cam in itertools.product(
-                templates, bases, projects, sequences, shots, cams):
-            path = temp % {'base': base, 'project': proj, 'episode': '*',
-                           'sequence': sq, 'shot': sh, 'cam': cam}
-            globs = glob.glob(path)
-            paths.extent(globs)
+        return paths
 
-        return globs
+    getCameraPaths = _getCameraPaths_blob_method
 
     def getCameras(self):
         '''Get Cameras found in the backdrop'''
@@ -281,14 +254,24 @@ class BackdropShot(object):
 
     def replaceCameras(self, path=None):
         '''Replace Cameras found in the Backdrop'''
+        cameras = self.getCameras()
+        if not cameras:
+            return
+
         if path is None:
             paths = self.getCameraPaths()
             if not paths:
-                path = paths
-            elif len(paths) == 1:
+                paths = self.getCameraPaths(multi_episode=True)
+
+            if len(paths) == 1:
                 path = paths[0]
-            else:
-                path = getPathChoice(paths)
+            elif len(paths) > 1:
+                path = self.getPathChoice(paths)
+
+        if path is None:
+            raise RuntimeError(
+                    'Cannot find camera on path for backdrop %r' % self)
+
         for cam in self.getCameras():
             try:
                 replaceCamera(cam, path)
@@ -310,6 +293,37 @@ class BackdropShot(object):
             if match:
                 return int(match.group(1)), match.group(2)
         return None, None
+
+    def getPathChoice(self, paths):
+        dlg = QtWidgets.QDialog(QtWidgets.QApplication.activeWindow())
+        dlg.setWindowTitle('Replace Camera')
+        dlg.setMinimumWidth(600)
+        dlg.setMinimumHeight(100)
+
+        edit = QtWidgets.QTextEdit()
+        edit.text()
+        edit.setEnabled(False)
+        label = QtWidgets.QLabel('Select Cam Path:')
+        box = QtWidgets.QComboBox(dlg)
+        box.addItems(paths)
+        okbtn = QtWidgets.QPushButton('OK')
+        cancelbtn = QtWidgets.QPushButton('Cancel')
+
+        hlayout = QtWidgets.QHBoxLayout()
+        hlayout.addWidget(label)
+        hlayout.addWidget(box)
+        hlayout.addWidget(okbtn)
+        hlayout.addWidget(cancelbtn)
+
+        vlayout = QtWidgets.QHBoxLayout(dlg)
+        vlayout.addWidget(edit)
+        vlayout.addItem(hlayout)
+
+        okbtn.clicked.connect(dlg.accept)
+        cancelbtn.clicked.connect(dlg.reject)
+
+        if dlg.exec_() == QtCore.Qt.Accepted:
+            return paths[box.currentIndex()]
 
     def getShotNumber(self):
         return self.getNumber('shot')
@@ -395,6 +409,12 @@ class BackdropShot(object):
                 shots.append(shot)
         return shots
 
+    def showMissingCameraError(self):
+        cui.showMessage(QtWidgets.QApplication.activeWindow(),
+                        title='Replace Camera',
+                        msg='No camera file found on %r' % self,
+                        icons=QtWidgets.QMessageBox.Critical)
+
 
 @restore_selection()
 def replaceBackdropCameras(nodes=None):
@@ -404,23 +424,36 @@ def replaceBackdropCameras(nodes=None):
     if nodes is None:
         nodes = nuke.selectedNodes()
     backdropShots = BackdropShot.getFromNodes(nodes)
+
     for bds in backdropShots:
         cameras = bds.getCameras()
+        if not cameras:
+            continue
+
+        path = None
+
+        paths = bds.getCameraPaths()
+        if not paths:
+            paths = bds.getCameraPaths(multi_episode=True)
+
+        if len(paths) == 1:
+            path = paths[0]
+        elif len(paths) > 1:
+            path = bds.getPathChoice(paths)
+
+        if not path:
+            bds.showMissingCameraError()
+
         try:
             for cam in cameras:
-                paths = bds.getCameraPaths()
-                path = paths
-                if len(paths) == 1:
-                    path = paths[0]
-                elif paths:
-                    path = getPathChoice(paths)
                 replacement_cam = replaceCamera(cam, path)
                 if replacement_cam:
                     results.append((bds.backdrop, path, replacement_cam))
-                    # do_select.append(cam in selected)
+
         except ReplaceCameraException:
             import traceback
             traceback.print_exc()
+
     return results
 
 
