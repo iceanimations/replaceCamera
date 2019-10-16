@@ -27,6 +27,7 @@ def getBackdrops(nodes=None):
 
 
 def iterNodes(stuff):
+    '''Create an iterator for one or more nodes'''
     if isinstance(stuff, nuke.Node):
         yield stuff
     elif hasattr(stuff, '__iter__'):
@@ -36,6 +37,8 @@ def iterNodes(stuff):
 
 
 def restore_selection(add_new=True):
+    '''Record selection before calling the function and try to restore it after
+    execution'''
     def _decorator(func):
         def _restorer(*args, **kwargs):
             selection = nuke.selectedNodes()
@@ -99,11 +102,9 @@ def replaceCamera(camera, path):
     new_node = nuke.nodePaste(path)
     if new_node is None:
         return None
-        # raise ReplaceCameraException, 'Camera node not found in %s' % path
     new_cam = findCameraUpstream(new_node)
     if new_cam is None:
         return None
-        # raise ReplaceCameraException, 'Camera node not found in %s' % path
     new_cam.setXYpos(x, y)
     for dep in new_cam.dependent():
         nuke.delete(dep)
@@ -269,7 +270,7 @@ class BackdropShot(object):
                 path = self.getPathChoice(paths)
 
         if path is None:
-            raise RuntimeError(
+            raise ReplaceCameraException(
                     'Cannot find camera on path for backdrop %r' % self)
 
         for cam in self.getCameras():
@@ -301,7 +302,16 @@ class BackdropShot(object):
         dlg.setMinimumHeight(100)
 
         edit = QtWidgets.QTextEdit()
-        edit.text()
+        text = "<p>Multiple Paths found for the following Backdrop</p>"
+        text += "<table style=\"margin: auto\">"
+        text += "<tr><td><b>Project:</b></td><td>%s</td></tr>" % self.project
+        text += "<tr><td><b>Episode:</b></td><td>%s</td></tr>" % self.episode
+        text += "<tr><td><b>Sequence:</b></td><td>%s</td></tr>" % self.sequence
+        text += "<tr><td><b>Shot:</b></td><td>%s</td></tr>" % self.shot
+        text += ("<tr><td><b>Backdrop Node:</b>"
+                 "</td><td>%s</td></tr>" % self.backdrop.name())
+        text += "</table>"
+        edit.setText(text)
         edit.setEnabled(False)
         label = QtWidgets.QLabel('Select Cam Path:')
         box = QtWidgets.QComboBox(dlg)
@@ -315,14 +325,14 @@ class BackdropShot(object):
         hlayout.addWidget(okbtn)
         hlayout.addWidget(cancelbtn)
 
-        vlayout = QtWidgets.QHBoxLayout(dlg)
+        vlayout = QtWidgets.QVBoxLayout(dlg)
         vlayout.addWidget(edit)
-        vlayout.addItem(hlayout)
+        vlayout.addLayout(hlayout)
 
         okbtn.clicked.connect(dlg.accept)
         cancelbtn.clicked.connect(dlg.reject)
 
-        if dlg.exec_() == QtCore.Qt.Accepted:
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
             return paths[box.currentIndex()]
 
     def getShotNumber(self):
@@ -435,11 +445,16 @@ def replaceBackdropCameras(nodes=None):
         paths = bds.getCameraPaths()
         if not paths:
             paths = bds.getCameraPaths(multi_episode=True)
+        print len(paths)
 
         if len(paths) == 1:
             path = paths[0]
         elif len(paths) > 1:
-            path = bds.getPathChoice(paths)
+            print 'getPathChoice'
+            try:
+                path = bds.getPathChoice(paths)
+            except Exception as e:
+                print e
 
         if not path:
             bds.showMissingCameraError()
@@ -462,7 +477,7 @@ def main():
     if cams:
         print "%d cameras substituted!" % len(cams)
     else:
-        print "No cameras subsituted"
+        print "No cameras substituted"
     return cams
 
 
