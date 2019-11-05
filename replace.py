@@ -140,7 +140,9 @@ class BackdropShot(object):
             os.path.join(
                 '%(base)s', '%(project)s', '%(episode)s', '%(sequence)s',
                 '%(shot)s', 'animation', 'camera', '%(cam)s')]
-    project_maps = {'Suntop': {'proj_folder': 'Suntop_Season_01'}}
+    project_maps = {
+            'Suntop': {'proj_folder': 'Suntop_Season_01'},
+            'Suntop_S04': {'proj_folder': 'Suntop_Season_04'}}
 
     def __init__(self,
                  episode=None,
@@ -445,16 +447,15 @@ def replaceBackdropCameras(nodes=None):
         paths = bds.getCameraPaths()
         if not paths:
             paths = bds.getCameraPaths(multi_episode=True)
-        print len(paths)
 
         if len(paths) == 1:
             path = paths[0]
         elif len(paths) > 1:
-            print 'getPathChoice'
             try:
                 path = bds.getPathChoice(paths)
             except Exception as e:
-                print e
+                import traceback
+                traceback.print_exc()
 
         if not path:
             bds.showMissingCameraError()
